@@ -1,0 +1,6 @@
+{
+  "type": "web-accounts",
+  "web_provider": "claude",
+  "cookie": "sessionKey=REPLACE_WITH_YOUR_SESSION_COOKIE",
+  "device_id": "optional-browser-device-id"
+}

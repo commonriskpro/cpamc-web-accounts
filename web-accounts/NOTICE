@@ -1,0 +1,15 @@
+web-accounts includes protocol adaptations based on OmniRoute v3.8.51 at the
+pinned source reference:
+https://github.com/diegosouzapw/OmniRoute/tree/152d95108c9c3d557562311ffed63240a511eb31/open-sse/executors
+The adapted Claude Web payload/SSE and Kimi Web Connect-RPC wire descriptions
+remain subject to the MIT license reproduced in licenses/OmniRoute-MIT.txt.
+
+The native C ABI registration and host callback skeleton is adapted from the
+CLIProxyAPI plugin SDK at commit ac02da6c05e18f465aa7e3ed5b0a65a2f060917d;
+its MIT license is reproduced in licenses/CLIProxyAPI-MIT.txt.
+
+Qoder's connector follows the official qodercli invocation documented by the
+pinned OmniRoute source. No Qwen Web implementation is included: the OmniRoute
+v3.8.51 Qwen Web integration was retired pending a provenance/license review
+and is intentionally unavailable here. This new plugin is unpublished and is
+not maintained by OmniRoute.

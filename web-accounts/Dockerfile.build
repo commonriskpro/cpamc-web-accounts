@@ -1,0 +1,30 @@
+# Builder only: this image compiles the native plugin and never installs or
+# starts CPAMC/CLIProxyAPI. Use the Bookworm image for glibc or pass
+# BUILDER_IMAGE=golang:1.26-alpine for a musl build.
+ARG BUILDER_IMAGE=golang:1.26-bookworm
+FROM ${BUILDER_IMAGE} AS build
+
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+WORKDIR /src
+
+# Keep the build context explicit: no generated binaries, auth files, or
+# arbitrary host files are copied into the image.
+COPY go.mod ./
+COPY *.go ./
+COPY LICENSE NOTICE README.md ./
+COPY licenses ./licenses
+
+RUN if [ -f /etc/alpine-release ]; then \
+      apk add --no-cache gcc musl-dev; \
+    else \
+      apt-get update && \
+      apt-get install -y --no-install-recommends gcc libc6-dev && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+RUN test "$TARGETOS" = linux
+ENV CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH}
+RUN mkdir -p /out && go build -trimpath -buildmode=c-shared -o /out/web-accounts.so .
+
+FROM scratch AS artifact
+COPY --from=build /out/web-accounts.so /web-accounts.so

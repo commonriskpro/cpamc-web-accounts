@@ -1,0 +1,20 @@
+# Downloaded upstream references and local diagnostic/toolchain state.
+/CLIProxyAPI/
+/OmniRoute/
+/artifacts/
+.DS_Store
+__pycache__/
+*.pyc
+# Generated native libraries and build outputs.
+/web-accounts/dist/
+/web-accounts/*.dylib
+/web-accounts/*.so
+/web-accounts/*.dll
+/web-accounts/web-accounts.h
+# Never commit local credentials/configuration.
+.env
+.env.*
+*.local.json
+*.local.yaml
+credentials/
+auths/

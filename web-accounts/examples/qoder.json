@@ -1,0 +1,5 @@
+{
+  "type": "web-accounts",
+  "web_provider": "qoder",
+  "personal_access_token": "REPLACE_WITH_YOUR_QODER_PAT"
+}

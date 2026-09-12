@@ -1,0 +1,6 @@
+{
+  "type": "web-accounts",
+  "web_provider": "qwen",
+  "status": "unavailable",
+  "reason": "Qwen Web is intentionally not implemented pending provenance/license review."
+}

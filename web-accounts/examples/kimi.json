@@ -1,0 +1,5 @@
+{
+  "type": "web-accounts",
+  "web_provider": "kimi",
+  "access_token": "REPLACE_WITH_YOUR_KIMI_WEB_ACCESS_TOKEN"
+}
