@@ -100,23 +100,25 @@ const (
 )
 
 const (
-	methodRegister      = "plugin.register"
-	methodReconfigure   = "plugin.reconfigure"
-	methodPluginQuiesce = "plugin.quiesce"
-	methodModelStatic   = "model.static"
-	methodModelForAuth  = "model.for_auth"
-	methodAuthID        = "auth.identifier"
-	methodAuthParse     = "auth.parse"
-	methodAuthRefresh   = "auth.refresh"
-	methodExecID        = "executor.identifier"
-	methodExec          = "executor.execute"
-	methodExecStream    = "executor.execute_stream"
-	methodHostHTTP      = "host.http.do"
-	methodHostStream    = "host.http.do_stream"
-	methodHostRead      = "host.http.stream_read"
-	methodHostClose     = "host.http.stream_close"
-	methodStreamEmit    = "host.stream.emit"
-	methodStreamClose   = "host.stream.close"
+	methodRegister           = "plugin.register"
+	methodReconfigure        = "plugin.reconfigure"
+	methodPluginQuiesce      = "plugin.quiesce"
+	methodManagementRegister = "management.register"
+	methodManagementHandle   = "management.handle"
+	methodModelStatic        = "model.static"
+	methodModelForAuth       = "model.for_auth"
+	methodAuthID             = "auth.identifier"
+	methodAuthParse          = "auth.parse"
+	methodAuthRefresh        = "auth.refresh"
+	methodExecID             = "executor.identifier"
+	methodExec               = "executor.execute"
+	methodExecStream         = "executor.execute_stream"
+	methodHostHTTP           = "host.http.do"
+	methodHostStream         = "host.http.do_stream"
+	methodHostRead           = "host.http.stream_read"
+	methodHostClose          = "host.http.stream_close"
+	methodStreamEmit         = "host.stream.emit"
+	methodStreamClose        = "host.stream.close"
 )
 
 type envelope struct {
@@ -162,6 +164,7 @@ type configField struct {
 	Description string   `json:"Description"`
 }
 type capabilities struct {
+	ManagementAPI      bool     `json:"management_api"`
 	ModelProvider      bool     `json:"model_provider"`
 	AuthProvider       bool     `json:"auth_provider"`
 	Executor           bool     `json:"executor"`
@@ -386,12 +389,20 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 			return nil, errors.New("plugin is shutting down")
 		}
 		return okEnvelope(registration{SchemaVersion: schemaVersion, Metadata: metadata{
-			Name: "web-accounts", Version: "0.1.0", Author: "Saturno",
+			Name: "web-accounts", Version: "0.1.2", Author: "Saturno",
 			GitHubRepository: upstreamRepo,
-		}, Capabilities: capabilities{ModelProvider: true, AuthProvider: true, Executor: true, ExecutorModelScope: "oauth", ExecutorInput: []string{"chat-completions"}, ExecutorOutput: []string{"chat-completions"}}})
+		}, Capabilities: capabilities{ManagementAPI: true, ModelProvider: true, AuthProvider: true, Executor: true, ExecutorModelScope: "oauth", ExecutorInput: []string{"chat-completions"}, ExecutorOutput: []string{"chat-completions"}}})
 	case methodPluginQuiesce:
 		quiescePlugin()
 		return okEnvelope(map[string]bool{"quiesced": true})
+	case methodManagementRegister:
+		return okEnvelope(resourceRegistration{Resources: []resourceRoute{{Path: accountsResourcePath, Menu: "Cuentas web", Description: "Conecta Claude, Kimi y Qoder con la extensión de Chrome"}}})
+	case methodManagementHandle:
+		var req resourceRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			return nil, invalidRequest()
+		}
+		return okEnvelope(serveAccountsResource(req))
 	case methodModelStatic:
 		return okEnvelope(modelResponse{Provider: providerID})
 	case methodModelForAuth:
@@ -765,8 +776,14 @@ func parseAuth(req authParseRequest) (authParseResponse, error) {
 		return authParseResponse{}, err
 	}
 	attrs := map[string]string{"web_provider": webProvider}
+	name := strings.TrimSpace(req.FileName)
 	id := hashID(webProvider, credential)
-	name := req.FileName
+	if name != "" {
+		// Auth-file uploads identify the record by its filename. Keeping that ID
+		// stable lets credential replacement update the existing source instead
+		// of creating a duplicate virtual auth entry.
+		id = name
+	}
 	if name == "" {
 		name = id + ".json"
 	}

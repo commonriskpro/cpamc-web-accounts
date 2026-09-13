@@ -11,7 +11,7 @@ WORKDIR /src
 # Keep the build context explicit: no generated binaries, auth files, or
 # arbitrary host files are copied into the image.
 COPY go.mod ./
-COPY *.go ./
+COPY *.go accounts.html ./
 COPY LICENSE NOTICE README.md ./
 COPY licenses ./licenses
 

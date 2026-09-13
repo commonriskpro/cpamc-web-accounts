@@ -25,9 +25,20 @@ protocolo. `examples/qwen-unavailable.json` documenta el estado; `examples/qoder
 contiene el formato de PAT para el conector Qoder. El modelo
 Qwen3.8 disponible aquí es el conector Qoder explícito, no Qwen Web.
 
+## Página en el menú de CPAMC
+
+Desde la versión `0.1.2`, el registro nativo `management.register` declara un
+recurso GET con el menú **Cuentas web**. CPAMC lo muestra automáticamente en
+**PLUGINS** mediante su contrato público, sin cambios de fuente. La ruta
+`/v0/resource/plugins/web-accounts/accounts` solo sirve una guía estática
+incrustada en el binario: es pública, no tiene scripts ni formularios y nunca
+recibe credenciales. Los botones de conexión están en la extensión de Chrome.
+
 ## Ingreso seguro de credenciales
 
-CPAMC no necesita cambios de fuente: sube uno de los JSON de `examples/` por
+La [extensión Chrome](../chrome-extension/README.md) puede añadir las cuentas
+Claude/Kimi desde una sesión existente, o enviar un PAT de Qoder. Como
+alternativa manual, CPAMC no necesita cambios de fuente: sube uno de los JSON de `examples/` por
 el flujo existente de auth-file upload y habilita el plugin nativo. Define
 `plugins.dir` como el directorio de descubrimiento del backend (por ejemplo
 `/ruta/cli-proxy-api/plugins`; no es el directorio de auth salvo que tu
@@ -55,8 +66,9 @@ plugins:
 La ruta/configuración son opt-in del operador y no las escribe este proyecto. Nunca se
 incluyen cookies o tokens en logs, labels, atributos, errores ni respuestas
 visibles del plugin; el único transporte de secretos es `StorageJSON`,
-administrado por el host. No se implementa
-extracción de navegador, bypass de Cloudflare, ni refresh especulativo.
+administrado por el host. El plugin nativo no extrae datos del navegador; esa
+función está aislada en la extensión opt-in. No se implementan bypass de
+Cloudflare ni refresh especulativo.
 
 Las credenciales solo se aceptan con `type: "web-accounts"` (el parser también
 requiere `web_provider`). Se rechazan CR/LF. Claude admite un header Cookie,
@@ -127,7 +139,12 @@ requests contra cuentas reales durante la construcción. El directorio generado
 el artefacto se construye en CI.
 
 No sobrescribas una biblioteca que el backend tenga cargada. Instala una nueva
-versión en una ruta de target separada y reinicia el backend para actualizarla.
+versión en una ruta de target separada. En el backend 7.2.158 se ha validado
+la recarga en caliente al cambiar realmente los bytes del config (por ejemplo,
+un comentario de revisión), manteniendo sus valores. Una escritura idéntica
+no dispara la recarga. Comprueba la versión de metadata y el estado efectivo;
+la ruta descubierta en disco no basta. Reiniciar sigue siendo una alternativa
+operativa, pero no se hace automáticamente.
 En Unix el plugin retiene una referencia a su propia imagen para que el
 runtime Go no se desmapee durante `dlclose`; esa memoria queda retenida hasta
 el reinicio del proceso.

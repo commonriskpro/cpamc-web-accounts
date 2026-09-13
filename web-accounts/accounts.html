@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuentas web · CPAMC</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,-apple-system,sans-serif;color:#eae7e0;background:#1b1a18}*{box-sizing:border-box}body{margin:0;padding:clamp(24px,5vw,64px)}main{max-width:900px;margin:auto}.eyebrow{font:600 12px ui-monospace,monospace;letter-spacing:.14em;color:#91c9b1;text-transform:uppercase}h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.04em;margin:18px 0 12px}p{line-height:1.6;color:#bcb8ae}h2{font-size:20px;letter-spacing:-.02em;margin:0 0 16px}.intro{max-width:620px;font-size:17px}.steps{margin-top:32px;border:1px solid #454139;background:#25231f;border-radius:16px;padding:28px}ol{padding-left:24px;margin-bottom:0}li{padding:0 0 18px 8px;line-height:1.6}li:last-child{padding-bottom:0}li::marker{color:#91c9b1;font-weight:700}strong{color:#f2eee5}.providers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}.provider{border:1px solid #454139;border-radius:12px;padding:20px}.provider h3{margin:0 0 8px;font-size:16px}.provider p{font-size:14px;margin:0}.note{font-size:13px;border-top:1px solid #454139;padding-top:18px}details{margin:24px 0;color:#bcb8ae;font-size:14px;line-height:1.6}summary{cursor:pointer;color:#eae7e0}code{font-size:.94em;color:#91c9b1;overflow-wrap:anywhere}@media(max-width:640px){.providers{grid-template-columns:1fr}.steps{padding:22px}}@media(prefers-color-scheme:light){:root{color:#25231f;background:#faf9f6}p,details{color:#646057}strong,summary{color:#25231f}.eyebrow,code,li::marker{color:#22674e}.steps{background:#fff}.steps,.provider,.note{border-color:#ddd8ce}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">CPAMC / Web accounts</div>
+<h1>Cuentas web</h1>
+<p class="intro">Conecta tus cuentas desde Chrome, sin copiar cookies ni volver a introducir tu clave de CPAMC.</p>
+<section class="steps" aria-labelledby="connect-title">
+<h2>Conectar desde esta pestaña</h2>
+<ol>
+<li>Abre CPAMC en <strong>Chrome</strong> e inicia sesión como siempre.</li>
+<li>Pulsa el icono de la extensión <strong>CPAMC Web Accounts</strong> en la barra de Chrome. Su panel se abre junto a CPAMC, sin salir de esta pestaña.</li>
+<li>Pulsa <strong>Usar sesión de CPAMC</strong> en el panel y luego <strong>Refresh All</strong> en CPAMC. La extensión verifica la conexión con este servidor.</li>
+<li>Elige la cuenta y acepta el permiso solicitado. Si falta la sesión, inicia sesión en la web oficial que se abre y vuelve a pulsar <strong>Conectar</strong>.</li>
+</ol>
+</section>
+<div class="providers">
+<section class="provider"><h3>Claude</h3><p>Sesión de claude.ai. Solo se lee la cookie necesaria al conectar.</p></section>
+<section class="provider"><h3>Kimi</h3><p>Sesión de www.kimi.ai. Las cuentas de kimi.com no están incluidas.</p></section>
+<section class="provider"><h3>Qoder / Qwen3.8</h3><p>Introduce el PAT de Qoder en la extensión. Qwen Web no está implementado.</p></section>
+</div>
+<details><summary>¿Todavía no tienes la extensión?</summary>
+<p>Descomprime el paquete de la extensión en tu computadora. Abre <code>chrome://extensions</code>, activa <strong>Modo de desarrollador</strong> y pulsa <strong>Cargar descomprimida</strong>. Selecciona la carpeta que contiene <code>manifest.json</code> y fija la extensión en la barra.</p>
+<p>Si el servidor está en Linux o Docker, la extensión se instala en el Chrome del usuario, no dentro del servidor. Esta versión requiere que CPAMC y su API estén en el mismo origen: HTTPS para servidores remotos o HTTP en localhost.</p>
+</details>
+<p class="note">Esta página es informativa: no recibe claves ni cookies y no comprueba cuentas. Las acciones de conexión están en la extensión, que muestra el servidor de destino antes de enviar. Añadir una cuenta no confirma que la inferencia funcione.</p>
+</main></body></html>

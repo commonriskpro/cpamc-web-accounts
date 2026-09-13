@@ -132,6 +132,33 @@ func TestParseAuthNormalizesCredentialsAndFiltersModels(t *testing.T) {
 	}
 }
 
+func TestParseAuthUsesFilenameAsStableID(t *testing.T) {
+	first := mustJSON(map[string]any{"type": providerID, "web_provider": "kimi", "access_token": "first-token"})
+	second := mustJSON(map[string]any{"type": providerID, "web_provider": "kimi", "access_token": "rotated-token"})
+	firstAuth, err := parseAuth(authParseRequest{RawJSON: first, FileName: "web-accounts-kimi-fixed.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondAuth, err := parseAuth(authParseRequest{RawJSON: second, FileName: "web-accounts-kimi-fixed.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherAuth, err := parseAuth(authParseRequest{RawJSON: second, FileName: "web-accounts-kimi-other.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstAuth.Auth.ID != "web-accounts-kimi-fixed.json" || secondAuth.Auth.ID != firstAuth.Auth.ID {
+		t.Fatalf("filename ID not stable: first=%q second=%q", firstAuth.Auth.ID, secondAuth.Auth.ID)
+	}
+	if otherAuth.Auth.ID == firstAuth.Auth.ID {
+		t.Fatal("different filenames must produce different auth IDs")
+	}
+	withoutName, err := parseAuth(authParseRequest{RawJSON: first})
+	if err != nil || withoutName.Auth.ID == "" || withoutName.Auth.FileName == "" {
+		t.Fatalf("filename-less fallback invalid: %#v, %v", withoutName, err)
+	}
+}
+
 func TestParseAuthRejectsWrongTypeQwenAndCRLF(t *testing.T) {
 	wrongType, _ := json.Marshal(map[string]any{"type": "other", "web_provider": "claude", "cookie": "sessionKey=x"})
 	resp, err := parseAuth(authParseRequest{RawJSON: wrongType})
