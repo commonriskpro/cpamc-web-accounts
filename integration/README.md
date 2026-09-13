@@ -18,7 +18,7 @@ python3 integration/native-protocol-smoke.py web-accounts/web-accounts.dylib
 two synthetic auth fixtures. It starts its own temporary loopback service,
 checks native registration/uploads/models and removes its temporary state.
 It does not perform real-account inference. Linux uses `web-accounts.so` instead
-of `.dylib`. Docker execution requires an actual container runtime.
+of `.dylib`; Windows uses `web-accounts.dll`. Docker execution requires an actual container runtime.
 
 ## Chrome connector → native host
 

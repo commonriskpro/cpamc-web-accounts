@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -750,8 +751,7 @@ func runQoder(ctx context.Context, token string, body chatRequest, model string)
 	args := []string{"--print", "--output-format", "json", "--model", "qmodel_preview", "--tools", "", "--config-dir", dir}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = dir
-	pathEnv := strings.Join([]string{filepath.Dir(command), "/usr/bin", "/bin"}, string(os.PathListSeparator))
-	cmd.Env = []string{"PATH=" + pathEnv, "HOME=" + dir, "QODER_PERSONAL_ACCESS_TOKEN=" + token}
+	cmd.Env = buildQoderChildEnv(command, dir, token)
 	cmd.Stdin = strings.NewReader(prompt)
 	var stdout limitedBuffer
 	stdout.limit = maxBodyBytes
@@ -776,6 +776,81 @@ func runQoder(ctx context.Context, token string, body chatRequest, model string)
 		}
 	}
 	return "", errors.New("Qoder CLI returned no text")
+}
+
+func buildQoderChildEnv(command string, isolatedDir string, token string) []string {
+	if runtime.GOOS == "windows" {
+		systemRoot := os.Getenv("SystemRoot")
+		if systemRoot == "" {
+			systemRoot = os.Getenv("WINDIR")
+		}
+		if systemRoot == "" {
+			systemRoot = `C:\Windows`
+		}
+		system32 := filepath.Join(systemRoot, "System32")
+
+		seen := make(map[string]bool)
+		var pathEntries []string
+		addPath := func(p string) {
+			if p == "" {
+				return
+			}
+			clean := filepath.Clean(p)
+			lower := strings.ToLower(clean)
+			if !seen[lower] {
+				seen[lower] = true
+				pathEntries = append(pathEntries, clean)
+			}
+		}
+
+		addPath(filepath.Dir(command))
+		addPath(system32)
+		addPath(systemRoot)
+
+		lowerSysRoot := strings.ToLower(systemRoot)
+		for _, entry := range filepath.SplitList(os.Getenv("PATH")) {
+			clean := filepath.Clean(entry)
+			lower := strings.ToLower(clean)
+			if strings.HasPrefix(lower, lowerSysRoot) {
+				addPath(clean)
+			}
+		}
+
+		env := []string{
+			"PATH=" + strings.Join(pathEntries, string(os.PathListSeparator)),
+			"SystemRoot=" + systemRoot,
+			"USERPROFILE=" + isolatedDir,
+			"HOME=" + isolatedDir,
+			"QODER_PERSONAL_ACCESS_TOKEN=" + token,
+		}
+
+		copyIfSet := func(key string, fallback string) {
+			val, ok := os.LookupEnv(key)
+			if ok && val != "" {
+				env = append(env, key+"="+val)
+			} else if fallback != "" {
+				env = append(env, key+"="+fallback)
+			}
+		}
+
+		copyIfSet("WINDIR", systemRoot)
+		copyIfSet("ComSpec", filepath.Join(system32, "cmd.exe"))
+		systemDrive := os.Getenv("SystemDrive")
+		if systemDrive == "" && len(systemRoot) >= 2 && systemRoot[1] == ':' {
+			systemDrive = systemRoot[:2]
+		}
+		copyIfSet("SystemDrive", systemDrive)
+		copyIfSet("PATHEXT", ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC")
+		copyIfSet("TEMP", "")
+		copyIfSet("TMP", "")
+		copyIfSet("APPDATA", "")
+		copyIfSet("LOCALAPPDATA", "")
+
+		return env
+	}
+
+	pathEnv := strings.Join([]string{filepath.Dir(command), "/usr/bin", "/bin"}, string(os.PathListSeparator))
+	return []string{"PATH=" + pathEnv, "HOME=" + isolatedDir, "QODER_PERSONAL_ACCESS_TOKEN=" + token}
 }
 
 func findQoderCommand() (string, error) {

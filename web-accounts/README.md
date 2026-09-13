@@ -43,11 +43,12 @@ el flujo existente de auth-file upload y habilita el plugin nativo. Define
 `plugins.dir` como el directorio de descubrimiento del backend (por ejemplo
 `/ruta/cli-proxy-api/plugins`; no es el directorio de auth salvo que tu
 instalación lo configure así) y coloca allí el binario, o en su subdirectorio
-de plataforma `darwin/arm64`, `linux/arm64` o `linux/amd64`:
+de plataforma `darwin/arm64`, `linux/arm64`, `linux/amd64` o `windows/amd64`:
 
 ```text
 /ruta/cli-proxy-api/plugins/darwin/arm64/web-accounts.dylib
 /ruta/cli-proxy-api/plugins/linux/amd64/web-accounts.so
+/ruta/cli-proxy-api/plugins/windows/amd64/web-accounts.dll
 ```
 
 El loader prefiere el subdirectorio de plataforma y también acepta el binario
@@ -100,18 +101,19 @@ el script ejecuta tests, vet y compila con `-trimpath`:
 
 ```sh
 ./build.sh
-# macOS: web-accounts.dylib; Linux: web-accounts.so
+# macOS: web-accounts.dylib; Linux: web-accounts.so; Windows: web-accounts.dll
 ```
 
 Para Linux se admiten `amd64` y `arm64`; macOS se limita a Apple Silicon
-`arm64`. Una compilación cruzada omite tests/vet (deben ejecutarse en el
-runner nativo), requiere el compilador C del destino y escribe en una ruta
-separada para no reemplazar otro target:
+`arm64`; Windows admite `amd64`. Una compilación cruzada omite tests/vet (deben
+ejecutarse en el runner nativo), requiere el compilador C del destino (o `$CC` / `zig cc`)
+y escribe en una ruta separada para no reemplazar otro target:
 
 ```sh
 GOOS=linux GOARCH=amd64 ./build.sh # dist/linux/amd64/web-accounts.so
 GOOS=linux GOARCH=arm64 ./build.sh # dist/linux/arm64/web-accounts.so
 GOOS=darwin GOARCH=arm64 ./build.sh # dist/darwin/arm64/web-accounts.dylib
+GOOS=windows GOARCH=amd64 ./build.sh # dist/windows/amd64/web-accounts.dll
 OUTPUT=/tmp/web-accounts.so GOOS=linux GOARCH=amd64 ./build.sh
 ```
 
@@ -128,11 +130,14 @@ docker build -f Dockerfile.build \
 ```
 
 Los builds Docker producen Linux; los builds macOS deben ejecutarse en macOS
-con el toolchain correspondiente. No se publica un artefacto Windows en esta
-versión.
+con el toolchain correspondiente. Para compilación cruzada sin toolchains
+externos pesados, `build.sh` respeta `$CC` o recurre a `zig cc` (ej. `windows/amd64`
+vía `x86_64-windows-gnu`, y `linux/amd64` vía `x86_64-linux-gnu.2.31` o
+`x86_64-linux-musl` según `LIBC=glibc|musl`). Si no hay toolchain C disponible,
+el build falla de forma segura (fail-closed).
 
-El binario incluido solo puede utilizarse en macOS Apple Silicon; Linux debe
-compilarse para la arquitectura del host desde fuente o CI. No instala ni
+El binario incluido solo puede utilizarse en macOS Apple Silicon; Linux y
+Windows deben compilarse para la arquitectura del host desde fuente o CI. No instala ni
 habilita el plugin, no modifica CPAMC/CLIProxyAPI y no realiza
 requests contra cuentas reales durante la construcción. El directorio generado
 `web-accounts.dylib`/`.so` y su header pueden eliminarse antes de empaquetar si

@@ -44,9 +44,24 @@ def main():
                 return json.load(response)
 
         with (root / "server.log").open("w+") as log:
+            child_env = {"PATH": os.environ.get("PATH", ""), "HOME": directory}
+            if sys.platform == "win32":
+                for var in (
+                    "SystemRoot",
+                    "WINDIR",
+                    "ComSpec",
+                    "SystemDrive",
+                    "PATHEXT",
+                    "TEMP",
+                    "TMP",
+                    "USERPROFILE",
+                ):
+                    val = os.environ.get(var)
+                    if val is not None:
+                        child_env[var] = val
             process = subprocess.Popen(
                 [binary, "-local-model", "-config", str(config)], cwd=root,
-                env={"PATH": os.environ.get("PATH", ""), "HOME": directory},
+                env=child_env,
                 stdout=log, stderr=subprocess.STDOUT,
             )
             try:

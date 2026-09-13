@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -201,13 +203,45 @@ func TestUnsupportedChatParametersAreRejected(t *testing.T) {
 	}
 }
 
-func TestQoderCliUsesIsolatedEnvAndNoTools(t *testing.T) {
-	dir := t.TempDir()
-	command := filepath.Join(dir, "qodercli")
-	script := "#!/bin/sh\nif [ \"$6\" != \"--tools\" ] || [ -n \"$7\" ]; then exit 7; fi\nprintf '{\\\"result\\\":\\\"%s|%s\\\"}' \"$QODER_PERSONAL_ACCESS_TOKEN\" \"$UNRELATED_ENV\"\n"
-	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+func writeMockExecutable(t *testing.T, dir, name, goSource, posixScript string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		exePath := filepath.Join(dir, name+".exe")
+		srcPath := filepath.Join(dir, name+"_mock.go")
+		if err := os.WriteFile(srcPath, []byte(goSource), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		buildCmd := exec.Command("go", "build", "-o", exePath, srcPath)
+		if out, err := buildCmd.CombinedOutput(); err != nil {
+			t.Fatalf("failed to build mock executable %s: %v\n%s", name, err, string(out))
+		}
+		return exePath
+	}
+	shPath := filepath.Join(dir, name)
+	if err := os.WriteFile(shPath, []byte(posixScript), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	return shPath
+}
+
+func TestQoderCliUsesIsolatedEnvAndNoTools(t *testing.T) {
+	dir := t.TempDir()
+	goSource := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	if len(os.Args) < 8 || os.Args[6] != "--tools" || os.Args[7] != "" {
+		os.Exit(7)
+	}
+	fmt.Printf("{\"result\":\"%s|%s\"}", os.Getenv("QODER_PERSONAL_ACCESS_TOKEN"), os.Getenv("UNRELATED_ENV"))
+}
+`
+	posixScript := "#!/bin/sh\nif [ \"$6\" != \"--tools\" ] || [ -n \"$7\" ]; then exit 7; fi\nprintf '{\\\"result\\\":\\\"%s|%s\\\"}' \"$QODER_PERSONAL_ACCESS_TOKEN\" \"$UNRELATED_ENV\"\n"
+	writeMockExecutable(t, dir, "qodercli", goSource, posixScript)
 	t.Setenv("PATH", dir)
 	t.Setenv("UNRELATED_ENV", "must-not-inherit")
 	body := chatRequest{Messages: []chatMessage{{Role: "user", Content: "hello"}}}
@@ -222,10 +256,9 @@ func TestQoderCliUsesIsolatedEnvAndNoTools(t *testing.T) {
 
 func TestQoderCliFallbackName(t *testing.T) {
 	dir := t.TempDir()
-	command := filepath.Join(dir, "qoder")
-	if err := os.WriteFile(command, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	goSource := "package main\n\nfunc main() {}\n"
+	posixScript := "#!/bin/sh\nexit 0\n"
+	command := writeMockExecutable(t, dir, "qoder", goSource, posixScript)
 	t.Setenv("PATH", dir)
 	got, err := findQoderCommand()
 	if err != nil || got != command {
@@ -235,11 +268,9 @@ func TestQoderCliFallbackName(t *testing.T) {
 
 func TestQoderStreamUsesOpenAIChunksAndPublicModel(t *testing.T) {
 	dir := t.TempDir()
-	command := filepath.Join(dir, "qodercli")
-	script := "#!/bin/sh\nprintf '{\"result\":\"hello\"}'\n"
-	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	goSource := "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Print(`{\"result\":\"hello\"}`)\n}\n"
+	posixScript := "#!/bin/sh\nprintf '{\"result\":\"hello\"}'\n"
+	writeMockExecutable(t, dir, "qodercli", goSource, posixScript)
 	t.Setenv("PATH", dir)
 	payload, _ := json.Marshal(map[string]any{"model": "web-qoder/qwen3.8-max-preview", "stream": true, "messages": []any{map[string]string{"role": "user", "content": "hello"}}})
 	raw, err := handleMethod(methodExecStream, mustJSON(executorRequest{

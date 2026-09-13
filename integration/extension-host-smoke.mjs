@@ -14,7 +14,7 @@ const binary = process.argv[2];
 let pluginDir = path.resolve(process.argv[3] || path.join(project, 'web-accounts'));
 const previousLibrary=process.argv[4] ? path.resolve(process.argv[4]) : '';
 const expectedVersion = '0.1.2';
-const newLibrary=path.join(pluginDir, process.platform==='darwin'?'web-accounts.dylib':'web-accounts.so');
+const newLibrary=path.join(pluginDir, process.platform==='darwin'?'web-accounts.dylib':(process.platform==='win32'?'web-accounts.dll':'web-accounts.so'));
 assert(binary, 'usage: node integration/extension-host-smoke.mjs BACKEND_BINARY [PLUGIN_DIR]');
 const root = await mkdtemp(path.join(tmpdir(), 'cpamc-extension-test-'));
 const socket = net.createServer();

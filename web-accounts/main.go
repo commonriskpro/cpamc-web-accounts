@@ -3,6 +3,7 @@ package main
 /*
 #cgo linux LDFLAGS: -ldl
 #cgo linux CFLAGS: -D_GNU_SOURCE
+#cgo windows LDFLAGS: -lkernel32
 #if defined(__unix__) || defined(__APPLE__)
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -14,6 +15,8 @@ package main
 #if defined(__unix__) || defined(__APPLE__)
 #include <dlfcn.h>
 #include <pthread.h>
+#elif defined(_WIN32) || defined(__CYGWIN__)
+#include <windows.h>
 #endif
 
 typedef struct { void* ptr; size_t len; } cliproxy_buffer;
@@ -49,8 +52,10 @@ static void free_host(void* ptr, size_t len) {
 // handle after shutdown; retaining this reference keeps Go callbacks and the
 // Go runtime mapped until process exit. The reference is intentionally never
 // released and is acquired at most once per process.
-#if defined(__unix__) || defined(__APPLE__)
+// On Windows, GetModuleHandleExW with GET_MODULE_HANDLE_EX_FLAG_PIN pins the DLL
+// to prevent FreeLibrary from unmapping the Go runtime (Go issue #11100).
 extern int cliproxy_plugin_init(cliproxy_host_api*, cliproxy_plugin_api*);
+#if defined(__unix__) || defined(__APPLE__)
 static pthread_mutex_t plugin_image_pin_mu = PTHREAD_MUTEX_INITIALIZER;
 static void* plugin_image_pin;
 static int pin_plugin_image(void) {
@@ -67,6 +72,16 @@ static int pin_plugin_image(void) {
   }
   pthread_mutex_unlock(&plugin_image_pin_mu);
   return result;
+}
+#elif defined(_WIN32) || defined(__CYGWIN__)
+static int pin_plugin_image(void) {
+  HMODULE hModule = NULL;
+  BOOL ok = GetModuleHandleExW(
+    GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+    (LPCWSTR)(uintptr_t)&cliproxy_plugin_init,
+    &hModule
+  );
+  return ok ? 0 : 1;
 }
 #else
 static int pin_plugin_image(void) { return 0; }
