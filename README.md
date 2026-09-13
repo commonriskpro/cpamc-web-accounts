@@ -6,7 +6,33 @@ Kimi Web y Qoder/Qwen3.8. **Qwen Web no está implementado.**
 
 - macOS: Apple Silicon (M), `darwin/arm64` únicamente. Intel no soportado.
 - Linux/Docker: `amd64` y `arm64`; elegir glibc o musl según el contenedor.
+- Windows: `amd64`.
 - El estado de las pruebas locales no equivale a validación con cuentas reales.
+
+## Instalación rápida
+
+1. Descargá tu binario desde la
+   [release v0.2.0](https://github.com/commonriskpro/cpamc-web-accounts/releases/tag/v0.2.0):
+   - Windows: `web-accounts-windows-amd64.dll` → renombralo a `web-accounts.dll`
+   - Linux glibc (Debian/Ubuntu): `web-accounts-linux-amd64.so`
+   - Linux musl (Alpine): `web-accounts-linux-amd64-musl.so` → renombralo a `web-accounts.so`
+   - macOS M: `web-accounts-darwin-arm64.dylib`
+2. Copialo al subdirectorio de plataforma dentro del `plugins.dir` del backend:
+   `windows/amd64/`, `linux/amd64`, `linux/arm64` o `darwin/arm64`.
+3. Habilitá el plugin en el YAML del backend:
+   ```yaml
+   plugins:
+     enabled: true
+     dir: /ruta/cli-proxy-api/plugins
+     configs:
+       web-accounts:
+         enabled: true
+   ```
+4. Si el backend ya corre, cambiá un byte real del config (ej. un comentario)
+   para la recarga en caliente y verificá `metadata.version` en la UI.
+   Nunca sobrescribas el binario que está cargado.
+
+[Detalle completo de construcción y Docker](web-accounts/README.md).
 
 El plugin nativo registra **Cuentas web** en la sección **PLUGINS** del menú
 lateral de CPAMC. Esta página es una guía pública; las acciones de conexión
