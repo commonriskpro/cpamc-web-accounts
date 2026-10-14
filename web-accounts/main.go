@@ -458,8 +458,12 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		}
 		ctx := context.Background()
 		var cancel context.CancelFunc
-		if provider, _, errCredential := readCredential(req.StorageJSON); errCredential == nil && provider == "qoder" {
-			ctx, cancel = context.WithTimeout(ctx, qoderTimeout)
+		if provider, _, errCredential := readCredential(req.StorageJSON); errCredential == nil && (provider == "qoder" || provider == "gemini") {
+			timeout := qoderTimeout
+			if provider == "gemini" {
+				timeout = geminiTimeout
+			}
+			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
 		}
 		resp, err := execute(ctx, req, false)
@@ -476,8 +480,12 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		if errCredential != nil {
 			return nil, errCredential
 		}
-		if provider == "qoder" {
-			ctx, cancel := context.WithTimeout(context.Background(), qoderTimeout)
+		if provider == "qoder" || provider == "gemini" {
+			timeout := qoderTimeout
+			if provider == "gemini" {
+				timeout = geminiTimeout
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 			resp, err := execute(ctx, req, false)
 			if err != nil {
@@ -490,7 +498,12 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 					publicModel = body.Model
 				}
 			}
-			chunks, err := qoderStreamChunks(resp.Payload, publicModel)
+			var chunks []streamChunk
+			if provider == "gemini" {
+				chunks, err = geminiStreamChunks(resp.Payload, publicModel)
+			} else {
+				chunks, err = qoderStreamChunks(resp.Payload, publicModel)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -514,7 +527,12 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 }
 
 func invalidRequest() error  { return errors.New("invalid plugin request") }
-func safeError(error) string { return "web account request failed" }
+func safeError(err error) string {
+	if err == nil {
+		return "web account request failed"
+	}
+	return err.Error()
+}
 func errorEnvelopeFor(err error) []byte {
 	message := safeError(err)
 	status := 0
@@ -769,7 +787,7 @@ func parseAuth(req authParseRequest) (authParseResponse, error) {
 	if webProvider == "qwen" || webProvider == "qwen-web" {
 		return authParseResponse{}, errors.New("Qwen Web is unavailable pending provenance review")
 	}
-	if webProvider != "claude" && webProvider != "kimi" && webProvider != "qoder" {
+	if webProvider != "claude" && webProvider != "kimi" && webProvider != "qoder" && webProvider != "gemini" {
 		return authParseResponse{Handled: false}, nil
 	}
 	credential, err := credentialValue(input)
@@ -838,6 +856,11 @@ func canonicalStorage(webProvider, credential string, input map[string]any) ([]b
 			return nil, errors.New("credential contains invalid line breaks")
 		}
 		data["personal_access_token"] = trimHorizontal(credential)
+	case "gemini":
+		if !noCRLF(credential) {
+			return nil, errors.New("credential contains invalid line breaks")
+		}
+		data["cookie"] = trimHorizontal(credential)
 	}
 	return json.Marshal(data)
 }
@@ -866,7 +889,7 @@ func readCredential(storage []byte) (string, string, error) {
 		return "", "", errors.New("invalid web account storage")
 	}
 	p := strings.ToLower(stringValue(data, "web_provider"))
-	if p != "claude" && p != "kimi" && p != "qoder" {
+	if p != "claude" && p != "kimi" && p != "qoder" && p != "gemini" {
 		return "", "", errors.New("unsupported web account provider")
 	}
 	if p == "qwen" {
@@ -904,6 +927,13 @@ func modelsForAuth(storage []byte, attrs map[string]string) []modelInfo {
 		}
 	case "qoder":
 		return []modelInfo{model("web-qoder/qwen3.8-max-preview", "qwen3.8-max-preview", "Qwen3.8-Max-Preview (Qoder)", true)}
+	case "gemini":
+		return []modelInfo{
+			model("web-gemini/gemini-4-argon", "gemini-4-argon", "Gemini 4 Argon (Web)", true),
+			model("gemini-4-argon", "gemini-4-argon", "Gemini 4 Argon", true),
+			model("web-gemini/gemini-2.5-pro", "gemini-2.5-pro", "Gemini 2.5 Pro (Web)", true),
+			model("web-gemini/gemini-2.5-flash", "gemini-2.5-flash", "Gemini 2.5 Flash (Web)", true),
+		}
 	default:
 		return nil
 	}

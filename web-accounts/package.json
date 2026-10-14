@@ -1,0 +1,19 @@
+{
+  "name": "web-accounts",
+  "version": "1.0.0",
+  "description": "Plugin nativo C ABI (ABI 1 / schema 6) para CLIProxyAPI/CPAMC. Expone un único provider `web-accounts`; cada auth file declara `web_provider` y solo recibe los modelos de su cuenta. Los IDs públicos llevan prefijo para no colisionar con proveedores nativos (`web-claude/*`, `web-kimi/*`, `web-qoder/*`):",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

@@ -3,7 +3,8 @@ export const MANAGEMENT_TTL_MS = 30 * 60 * 1000;
 export const MAX_RESPONSE_BYTES = 1 << 20;
 export const CLAUDE_ORIGIN = "https://claude.ai";
 export const KIMI_ORIGIN = "https://www.kimi.ai";
-export const PROVIDERS = ["claude", "kimi", "qoder"];
+export const GEMINI_ORIGIN = "https://gemini.google.com";
+export const PROVIDERS = ["claude", "kimi", "qoder", "gemini"];
 
 class ExtensionError extends Error {
   constructor(code, message) {
@@ -88,8 +89,18 @@ async function requestOriginPermission(chromeAPI, baseURL) {
 }
 
 async function requestProviderPermissions(chromeAPI, provider) {
-  const origins = provider === "claude" ? [`${CLAUDE_ORIGIN}/*`] : [`${KIMI_ORIGIN}/*`];
-  const permissions = provider === "claude" ? ["cookies"] : ["cookies", "scripting"];
+  let origins = [];
+  let permissions = [];
+  if (provider === "claude") {
+    origins = [`${CLAUDE_ORIGIN}/*`];
+    permissions = ["cookies"];
+  } else if (provider === "gemini") {
+    origins = [`${GEMINI_ORIGIN}/*`, "https://*.google.com/*"];
+    permissions = ["cookies"];
+  } else {
+    origins = [`${KIMI_ORIGIN}/*`];
+    permissions = ["cookies", "scripting"];
+  }
   if (typeof chromeAPI?.permissions?.request !== "function") {
     throw extensionError("permission-unavailable", "Chrome no permite solicitar permisos de cuentas web.");
   }
@@ -218,6 +229,7 @@ export function providerPayload(provider, credential) {
   const payload = {type: "web-accounts", web_provider: provider};
   if (provider === "claude") payload.cookie = value;
   else if (provider === "kimi") payload.access_token = value;
+  else if (provider === "gemini") payload.cookie = value;
   else payload.personal_access_token = value;
   return payload;
 }
@@ -269,6 +281,26 @@ async function openLogin(chromeAPI, origin) {
   if (typeof chromeAPI?.tabs?.create === "function") {
     await chromeAPI.tabs.create({url: `${origin}/`});
   }
+}
+
+async function captureGemini(chromeAPI) {
+  let cookies = [];
+  try {
+    cookies = await chromeAPI.cookies.getAll({domain: ".google.com"});
+  } catch {
+    cookies = [];
+  }
+  if (!cookies || cookies.length === 0) {
+    try {
+      cookies = await chromeAPI.cookies.getAll({url: `${GEMINI_ORIGIN}/`});
+    } catch {}
+  }
+  const hasPsid = (cookies || []).some(c => c && c.name && c.name.includes("PSID"));
+  if (!hasPsid) {
+    await openLogin(chromeAPI, GEMINI_ORIGIN);
+    throw extensionError("session-missing", "Inicia sesion en Gemini y vuelve a Conectar.");
+  }
+  return JSON.stringify(cookies);
 }
 
 async function captureClaude(chromeAPI) {
@@ -386,6 +418,7 @@ export function createExtensionController({chromeAPI = globalThis.chrome, fetchI
       let credential;
       if (provider === "claude") credential = await captureClaude(chromeAPI);
       else if (provider === "kimi") credential = await captureKimi(chromeAPI);
+      else if (provider === "gemini") credential = await captureGemini(chromeAPI);
       else credential = options.personalAccessToken || "";
       const payload = providerPayload(provider, credential);
       await assertCurrentSession();

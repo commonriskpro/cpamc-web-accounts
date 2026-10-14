@@ -328,3 +328,74 @@ func mustJSON(value any) []byte {
 	}
 	return raw
 }
+
+func TestGeminiParseAuthAndStreamChunks(t *testing.T) {
+	geminiAuth := mustJSON(map[string]any{
+		"type": providerID,
+		"web_provider": "gemini",
+		"cookie": "__Secure-1PSID=mock-cookie; __Secure-1PSIDTS=mock-ts",
+	})
+	resp, err := parseAuth(authParseRequest{RawJSON: geminiAuth, FileName: "web-accounts-gemini-test.json"})
+	if err != nil || !resp.Handled {
+		t.Fatalf("Gemini parseAuth failed: %v", err)
+	}
+	models := modelsForAuth(resp.Auth.StorageJSON, resp.Auth.Attributes)
+	if len(models) != 4 {
+		t.Fatalf("expected 4 Gemini models, got %d", len(models))
+	}
+	if models[0].ID != "web-gemini/gemini-4-argon" || models[0].Thinking == nil {
+		t.Fatalf("expected gemini-4-argon with thinking support, got %#v", models[0])
+	}
+
+	mockCompletion := []byte(`{
+		"id": "chatcmpl-mock-123",
+		"model": "web-gemini/gemini-4-argon",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": null,
+				"tool_calls": [{"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}}]
+			},
+			"finish_reason": "tool_calls"
+		}]
+	}`)
+	chunks, err := geminiStreamChunks(mockCompletion, "web-gemini/gemini-4-argon")
+	if err != nil || len(chunks) != 4 {
+		t.Fatalf("expected 4 stream chunks, got %d, err = %v", len(chunks), err)
+	}
+	if !strings.Contains(string(chunks[1].Payload), "tool_calls") {
+		t.Fatalf("expected chunk 1 to contain tool_calls, got %s", string(chunks[1].Payload))
+	}
+	if !strings.Contains(string(chunks[2].Payload), "tool_calls") {
+		t.Fatalf("expected chunk 2 to finish with tool_calls, got %s", string(chunks[2].Payload))
+	}
+	if string(chunks[3].Payload) != "[DONE]" {
+		t.Fatalf("expected final chunk to be [DONE], got %s", string(chunks[3].Payload))
+	}
+}
+
+
+func TestCodexStandardParametersAreAccepted(t *testing.T) {
+	payload := mustJSON(map[string]any{
+		"model": "web-gemini/gemini-4-argon",
+		"messages": []any{map[string]any{"role": "user", "content": "hola"}},
+		"stream": true,
+		"tools": []any{map[string]any{"type": "function", "function": map[string]any{"name": "test_fn"}}},
+		"tool_choice": "auto",
+		"parallel_tool_calls": false,
+		"reasoning_effort": "high",
+		"max_tokens": 4096,
+		"response_format": map[string]any{"type": "text"},
+	})
+	body, err := requestBody(payload)
+	if err != nil {
+		t.Fatalf("expected standard Codex parameters to be accepted, got err = %v", err)
+	}
+	if body.Model != "web-gemini/gemini-4-argon" || len(body.Messages) != 1 {
+		t.Fatalf("unexpected parsed body: %#v", body)
+	}
+	if body.ParallelToolCalls == nil || *body.ParallelToolCalls != false {
+		t.Fatalf("expected parallel_tool_calls = false, got %#v", body.ParallelToolCalls)
+	}
+}

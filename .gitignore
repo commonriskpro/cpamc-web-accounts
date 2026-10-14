@@ -18,3 +18,17 @@ __pycache__/
 *.local.yaml
 credentials/
 auths/
+
+# Session tokens and local run state
+gemini_cookies.txt
+safari_*.json
+captured_*.json
+wiz_global_data.json
+buttons.json
+argon_result.json
+argon_prueba.txt
+run_gemini_web_test.js
+poc_synthetic_tools.js
+gemini_web_client.js
+node_modules/
+/web-accounts/node_modules/

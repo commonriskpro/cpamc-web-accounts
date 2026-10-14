@@ -46,6 +46,7 @@ h3 { margin-bottom: 7px; font-size: 18px; }
 .provider-mark { display: inline-grid; width: 26px; height: 26px; place-items: center; border-radius: 8px; color: var(--navy); font-weight: 800; }
 .claude-mark { background: #f1d2bd; }
 .kimi-mark { background: #cce2ff; }
+.gemini-mark { background: #d7e3ff; }
 .qoder-mark { background: var(--mint); }
 .provider-button { background: white; color: var(--navy); font-size: 13px; font-weight: 700; }
 .provider-button:hover:not(:disabled) { background: #eff9f6; }

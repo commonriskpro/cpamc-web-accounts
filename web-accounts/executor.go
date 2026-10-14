@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,25 +15,32 @@ import (
 )
 
 const qoderTimeout = 45 * time.Second
+const geminiTimeout = 90 * time.Second
 
 var allowedRequestFields = map[string]bool{
 	"model": true, "messages": true, "stream": true, "reasoning_effort": true, "reasoning": true,
-	"thinking": true, "tools": true, "functions": true,
+	"thinking": true, "tools": true, "functions": true, "tool_choice": true, "parallel_tool_calls": true,
+	"max_tokens": true, "max_completion_tokens": true, "response_format": true, "service_tier": true,
+	"user": true, "seed": true, "store": true, "metadata": true, "client_metadata": true, "instructions": true,
 }
 
 type chatRequest struct {
-	Model           string          `json:"model"`
-	Messages        []chatMessage   `json:"messages"`
-	Tools           json.RawMessage `json:"tools"`
-	Functions       json.RawMessage `json:"functions"`
-	ReasoningEffort string          `json:"reasoning_effort"`
-	Reasoning       json.RawMessage `json:"reasoning"`
-	Thinking        json.RawMessage `json:"thinking"`
+	Model             string          `json:"model"`
+	Messages          []chatMessage   `json:"messages"`
+	Tools             json.RawMessage `json:"tools"`
+	Functions         json.RawMessage `json:"functions"`
+	ToolChoice        json.RawMessage `json:"tool_choice"`
+	ParallelToolCalls *bool           `json:"parallel_tool_calls"`
+	ReasoningEffort   string          `json:"reasoning_effort"`
+	Reasoning         json.RawMessage `json:"reasoning"`
+	Thinking          json.RawMessage `json:"thinking"`
 }
 type chatMessage struct {
-	Role      string          `json:"role"`
-	Content   any             `json:"content"`
-	ToolCalls json.RawMessage `json:"tool_calls"`
+	Role       string          `json:"role"`
+	Content    any             `json:"content"`
+	ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+	Name       string          `json:"name,omitempty"`
 }
 
 type responseAccumulator struct {
@@ -66,6 +74,13 @@ func execute(ctx context.Context, req executorRequest, streaming bool) (executor
 	}
 	if err := validateRequest(body, provider, upstreamModel); err != nil {
 		return executorResponse{}, err
+	}
+	if provider == "gemini" {
+		payload, err := runGemini(ctx, credential, body, upstreamModel, requestedModel)
+		if err != nil {
+			return executorResponse{}, err
+		}
+		return executorResponse{Payload: payload, Headers: map[string][]string{"Content-Type": {"application/json"}}}, nil
 	}
 	if provider == "qoder" {
 		text, err := runQoder(ctx, credential, body, upstreamModel)
@@ -127,7 +142,7 @@ func requestBody(payload []byte) (chatRequest, error) {
 	}
 	for key := range raw {
 		if !allowedRequestFields[key] {
-			return chatRequest{}, errors.New("chat request contains unsupported parameters")
+			return chatRequest{}, fmt.Errorf("chat request contains unsupported parameter: %s", key)
 		}
 	}
 	messageValues, ok := raw["messages"]
@@ -150,17 +165,6 @@ func validateMessageShape(raw json.RawMessage) bool {
 		if _, ok := message["role"]; !ok {
 			return false
 		}
-		if _, ok := message["content"]; !ok {
-			return false
-		}
-		for key := range message {
-			if key != "role" && key != "content" && key != "tool_calls" {
-				return false
-			}
-		}
-		if toolCalls, ok := message["tool_calls"]; ok && !isNullOrEmptyArray(toolCalls) {
-			return false
-		}
 	}
 	return true
 }
@@ -174,12 +178,15 @@ func isNullOrEmptyArray(raw json.RawMessage) bool {
 }
 
 func validateRequest(body chatRequest, provider, model string) error {
-	if body.Tools != nil && !isNullOrEmptyArray(body.Tools) {
-		return errors.New("web accounts support text chat only; tools are unsupported")
+	if provider != "gemini" {
+		if body.Tools != nil && !isNullOrEmptyArray(body.Tools) {
+			return errors.New("web accounts support text chat only; tools are unsupported")
+		}
+		if body.Functions != nil && !isNullOrEmptyArray(body.Functions) {
+			return errors.New("web accounts support text chat only; functions are unsupported")
+		}
 	}
-	if body.Functions != nil && !isNullOrEmptyArray(body.Functions) {
-		return errors.New("web accounts support text chat only; functions are unsupported")
-	}
+
 	if provider == "claude" || provider == "qoder" {
 		if body.ReasoningEffort != "" || (body.Reasoning != nil && string(body.Reasoning) != "null") || (body.Thinking != nil && string(body.Thinking) != "null") {
 			return errors.New("this web connector does not support reasoning or thinking parameters")
@@ -198,6 +205,9 @@ func validateRequest(body chatRequest, provider, model string) error {
 	}
 	if provider == "qoder" && model != "qwen3.8-max-preview" {
 		return errors.New("unsupported Qoder model")
+	}
+	if provider == "gemini" && model != "gemini-4-argon" && model != "gemini-2.5-pro" && model != "gemini-2.5-flash" {
+		return errors.New("unsupported Gemini Web model")
 	}
 	return nil
 }
@@ -235,6 +245,9 @@ func mustStorage(provider string) []byte {
 	}
 	if provider == "qoder" {
 		b, _ = json.Marshal(map[string]string{"web_provider": provider, "personal_access_token": "placeholder"})
+	}
+	if provider == "gemini" {
+		b, _ = json.Marshal(map[string]string{"web_provider": provider, "cookie": "placeholder"})
 	}
 	return b
 }
@@ -860,4 +873,167 @@ func findQoderCommand() (string, error) {
 		}
 	}
 	return "", errors.New("official Qoder CLI is unavailable; expose qodercli or qoder on PATH")
+}
+
+func resolveGeminiRunnerPath() string {
+	if p := os.Getenv("GEMINI_RUNNER_PATH"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if cur, err := os.Getwd(); err == nil {
+		for _, rel := range []string{"gemini_runner.js", "web-accounts/gemini_runner.js"} {
+			candidate := filepath.Join(cur, rel)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, sub := range []string{
+			filepath.Join(".cli-proxy-api", "plugins", "gemini_runner.js"),
+			filepath.Join(".cli-proxy-api", "plugins", "darwin", "arm64", "gemini_runner.js"),
+			filepath.Join(".cli-proxy-api", "plugins", "linux", "amd64", "gemini_runner.js"),
+			filepath.Join(".cli-proxy-api", "plugins", "linux", "arm64", "gemini_runner.js"),
+		} {
+			candidate := filepath.Join(home, sub)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	return "/Users/saturno/Developer/plugin/web-accounts/gemini_runner.js"
+}
+
+func resolveNodeBin() string {
+	if bin, err := exec.LookPath("node"); err == nil {
+		return bin
+	}
+	for _, candidate := range []string{"/usr/bin/node", "/usr/local/bin/node", "/opt/homebrew/bin/node"} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return "node"
+}
+
+func runGemini(ctx context.Context, cookie string, body chatRequest, upstreamModel, requestedModel string) ([]byte, error) {
+	runnerPath := resolveGeminiRunnerPath()
+	nodeBin := resolveNodeBin()
+	reqPayload := map[string]any{
+		"model":               requestedModel,
+		"upstream_model":      upstreamModel,
+		"messages":            body.Messages,
+		"tools":               body.Tools,
+		"functions":           body.Functions,
+		"tool_choice":         body.ToolChoice,
+		"parallel_tool_calls": body.ParallelToolCalls,
+		"credential":          cookie,
+	}
+	inputJSON, err := json.Marshal(reqPayload)
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, nodeBin, runnerPath)
+	cmd.Stdin = bytes.NewReader(inputJSON)
+	var stdout limitedBuffer
+	stdout.limit = maxBodyBytes
+	cmd.Stdout = &stdout
+	cmd.Stderr = &limitedBuffer{limit: 64 << 10}
+	if err := cmd.Run(); err != nil || stdout.exceeded {
+		if stdout.exceeded {
+			return nil, errors.New("Gemini runner response is too large")
+		}
+		return nil, errors.New("Gemini runner execution failed")
+	}
+	outBytes := stdout.buffer.Bytes()
+	var envelope map[string]any
+	if json.Unmarshal(outBytes, &envelope) != nil {
+		return nil, errors.New("Gemini runner returned invalid JSON")
+	}
+	if errMsg, isErr := envelope["error"].(string); isErr && errMsg != "" {
+		return nil, errors.New("Gemini runner error: " + errMsg)
+	}
+	return outBytes, nil
+}
+
+func geminiStreamChunks(payload []byte, model string) ([]streamChunk, error) {
+	var resp struct {
+		ID      string `json:"id"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role      string          `json:"role"`
+				Content   *string         `json:"content"`
+				ToolCalls json.RawMessage `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(payload, &resp); err != nil || len(resp.Choices) == 0 {
+		return nil, errors.New("invalid Gemini response payload")
+	}
+	choice := resp.Choices[0]
+	chunkID := resp.ID
+	if chunkID == "" {
+		chunkID = "chatcmpl-gw-" + randomUUID()[:12]
+	}
+	roleDelta := map[string]any{
+		"id":      chunkID,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{"role": "assistant"},
+				"finish_reason": nil,
+			},
+		},
+	}
+	r1, _ := json.Marshal(roleDelta)
+	contentDelta := map[string]any{
+		"id":      chunkID,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"delta": func() map[string]any {
+					d := make(map[string]any)
+					if choice.Message.Content != nil {
+						d["content"] = *choice.Message.Content
+					}
+					if len(choice.Message.ToolCalls) > 0 && string(choice.Message.ToolCalls) != "null" {
+						d["tool_calls"] = choice.Message.ToolCalls
+					}
+					return d
+				}(),
+				"finish_reason": nil,
+			},
+		},
+	}
+	r2, _ := json.Marshal(contentDelta)
+	finishDelta := map[string]any{
+		"id":      chunkID,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{},
+				"finish_reason": choice.FinishReason,
+			},
+		},
+	}
+	r3, _ := json.Marshal(finishDelta)
+	return []streamChunk{
+		{Payload: r1},
+		{Payload: r2},
+		{Payload: r3},
+		{Payload: []byte("[DONE]")},
+	}, nil
 }
